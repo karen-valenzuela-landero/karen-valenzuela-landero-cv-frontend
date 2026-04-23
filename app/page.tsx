@@ -13,21 +13,67 @@ type Profile = {
   coreSkills: string[];
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000;
+
 export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("https://karen-valenzuela-landero-cv.onrender.com/api/v1/profile")
+  /**
+    fetch(`${API_URL}/api/v1/profile`)
       .then(res => {
         if (!res.ok) throw new Error("API error");
         return res.json();
       })
-      .then(data => setProfile(data))
+      //.then(data => setProfile(data))
+      .then(data => {
+        if (!data.name || !data.role) throw new Error("Invalid profile data");
+        setProfile(data);
+      })
       .catch(err => {
         console.error(err);
       });
   }, []);
 
+  if (!profile) return <Loader />;
+  */
+    const fetchProfile = async (attempt = 1) => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/profile`);
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        const data = await res.json();
+
+        // Validar estructura
+        if (!data.name || !data.role) {
+          throw new Error("Invalid profile structure");
+        }
+
+        setProfile(data);
+        setError(null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        
+        if (attempt < MAX_RETRIES) {
+          console.warn(`Retry ${attempt}/${MAX_RETRIES} in ${RETRY_DELAY}ms...`);
+          setTimeout(() => fetchProfile(attempt + 1), RETRY_DELAY);
+        } else {
+          console.error("Final error:", message);
+          setError(message);
+        }
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
+  if (error) return <ErrorScreen message={error} />;
   if (!profile) return <Loader />;
 
   return (
@@ -44,7 +90,7 @@ export default function Home() {
 
         <div className="mt-6 flex gap-4">
           <a
-            href="https://karen-valenzuela-landero-cv.onrender.com/swagger-ui.html"
+            href={`${API_URL}/swagger-ui.html`}
             target="_blank"
             className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded-lg transition"
           >
@@ -65,7 +111,7 @@ export default function Home() {
   );
 }
 
-function Grid({ children }: any) {
+function Grid({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid md:grid-cols-2 gap-6">
       {children}
@@ -82,9 +128,9 @@ function Card({ title, items }: { title: string; items: string[] }) {
       <h2 className="text-xl font-semibold mb-4">{title}</h2>
 
       <div className="flex flex-wrap gap-2">
-        {items.map((item, i) => (
+        {items.map((item) => (
           <span
-            key={i}
+            key={item}
             className="bg-gray-700 px-3 py-1 rounded-full text-sm hover:bg-blue-500 transition"
           >
             {item}
@@ -95,6 +141,20 @@ function Card({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function ErrorScreen({ message }: { message: string }) {
+  return (
+    <div className="flex items-center justify-center h-screen">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="text-center"
+      >
+        <p className="text-red-500 text-lg mb-4">❌ Error loading profile</p>
+        <p className="text-gray-400">{message}</p>
+      </motion.div>
+    </div>
+  );
+}
 function Loader() {
   return (
     <div className="flex items-center justify-center h-screen">
